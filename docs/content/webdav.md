@@ -193,6 +193,17 @@ Properties:
 - Type:        string
 - Required:    false
 
+#### --webdav-pass-command
+
+Command to run to get the password.
+
+Properties:
+
+- Config:      pass_command
+- Env Var:     RCLONE_WEBDAV_PASS_COMMAND
+- Type:        string
+- Required:    false
+
 #### --webdav-bearer-token
 
 Bearer token instead of user/pass (e.g. a Macaroon).

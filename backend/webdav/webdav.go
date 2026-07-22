@@ -112,6 +112,10 @@ func init() {
 			Help:       "Password.",
 			IsPassword: true,
 		}, {
+			Name:     "pass_command",
+			Help:     "Command to run to get the password.",
+			Advanced: true,
+		}, {
 			Name:      "bearer_token",
 			Help:      "Bearer token instead of user/pass (e.g. a Macaroon).",
 			Sensitive: true,
@@ -193,6 +197,7 @@ type Options struct {
 	Vendor             string               `config:"vendor"`
 	User               string               `config:"user"`
 	Pass               string               `config:"pass"`
+	PassCommand        fs.SpaceSepList      `config:"pass_command"`
 	BearerToken        string               `config:"bearer_token"`
 	BearerTokenCommand fs.SpaceSepList      `config:"bearer_token_command"`
 	Enc                encoder.MultiEncoder `config:"encoding"`
@@ -516,6 +521,12 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 	f.features = (&fs.Features{
 		CanHaveEmptyDirectories: true,
 	}).Fill(ctx, f)
+	if len(opt.PassCommand) != 0 {
+		opt.Pass, err = f.getPassword()
+		if err != nil {
+			return nil, err
+		}
+	}
 	if opt.User != "" || opt.Pass != "" {
 		f.srv.SetUserPass(opt.User, opt.Pass)
 	} else if opt.BearerToken != "" {
@@ -566,8 +577,8 @@ func (f *Fs) setBearerToken(token string) {
 	f.srv.SetHeader("Authorization", "Bearer "+token)
 }
 
-// fetch the bearer token using the command
-func (f *Fs) fetchBearerToken(cmd fs.SpaceSepList) (string, error) {
+// get a credential by running a command
+func (f *Fs) getCredential(cred_name string, cmd fs.SpaceSepList) (string, error) {
 	var (
 		stdout bytes.Buffer
 		stderr bytes.Buffer
@@ -584,9 +595,14 @@ func (f *Fs) fetchBearerToken(cmd fs.SpaceSepList) (string, error) {
 		if stderrString == "" {
 			stderrString = stdoutString
 		}
-		return "", fmt.Errorf("failed to get bearer token using %q: %s: %w", f.opt.BearerTokenCommand, stderrString, err)
+		return "", fmt.Errorf("failed to get %s using %q: %s: %w", cred_name, cmd, stderrString, err)
 	}
 	return stdoutString, nil
+}
+
+// fetch the bearer token using the command
+func (f *Fs) fetchBearerToken(cmd fs.SpaceSepList) (string, error) {
+	return f.getCredential("bearer token", f.opt.BearerTokenCommand)
 }
 
 // Adds the configured headers to the request if any
@@ -607,6 +623,17 @@ func (f *Fs) findHeader(headers fs.CommaSepList, find string) bool {
 		}
 	}
 	return false
+}
+
+// get the password
+func (f *Fs) getPassword() (string, error) {
+	v, err, _ := f.authSingleflight.Do("password", func() (any, error) {
+		if len(f.opt.PassCommand) == 0 {
+			return "", nil
+		}
+		return f.getCredential("password", f.opt.PassCommand)
+	})
+	return v.(string), err
 }
 
 // fetch the bearer token and set it if successful
