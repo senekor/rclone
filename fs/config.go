@@ -142,6 +142,11 @@ var ConfigOptionsInfo = Options{{
 	Help:    "Command for supplying password for encrypted configuration",
 	Groups:  "Config",
 }, {
+	Name:    "password_fetcher",
+	Default: "",
+	Help:    "Map of matchers to commands, where commands fetch passwords for matching remotes",
+	Groups:  "Config",
+}, {
 	Name:    "max_delete",
 	Default: int64(-1),
 	Help:    "When synchronizing, limit the number of deletes",
@@ -632,6 +637,7 @@ type ConfigInfo struct {
 	StatsFileNameLength        int               `config:"stats_file_name_length"`
 	AskPassword                bool              `config:"ask_password"`
 	PasswordCommand            SpaceSepList      `config:"password_command"`
+	PasswordFetcher            PassFetcherMap    `config:"password_fetcher"`
 	UseServerModTime           bool              `config:"use_server_modtime"`
 	MaxTransfer                SizeSuffix        `config:"max_transfer"`
 	MaxDuration                Duration          `config:"max_duration"`

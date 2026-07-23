@@ -3,12 +3,14 @@
 package fs
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"fmt"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -88,11 +90,70 @@ func NewFs(ctx context.Context, path string) (Fs, error) {
 	if err != nil {
 		return nil, err
 	}
+	opt := new(ConfigInfo)
+	err = configstruct.Set(config, opt)
+	if err != nil {
+		return nil, err
+	}
+	fetchedPasswords := configmap.Simple{}
+	fetchCachedPassword := func(param string, fetcher SpaceSepList) (err error) {
+		if _, ok := fetchedPasswords[param]; ok {
+			return
+		}
+		value, err := fetch(param, fetcher)
+		if err != nil {
+			return err
+		}
+		fetchedPasswords[param] = value
+		return nil
+	}
+	fetcherMap := globalConfig.PasswordFetcher
+	fmt.Printf("%v\n", fetcherMap)
+	for param, fetcher := range fetcherMap.Remote[configName] {
+		fetchCachedPassword(param, fetcher)
+	}
+	for param, fetcher := range fetcherMap.Param {
+		fetchCachedPassword(param, fetcher)
+	}
+	if len(fetcherMap.Star) > 0 {
+		// TODO: iterate over sensitive fields of given remote
+		// fetchCachedPassword(param, opt.PasswordFetcher.star)
+		// (using reflection ?)
+	}
+	fmt.Printf("%v\n", fetchedPasswords)
+
+	config.AddGetter(fetchedPasswords, configmap.PriorityMax)
+	// for param, value := range fetchedPasswords {
+	// 	// TODO: set all fetched passwords in `opt`
+	// 	config.AddGetter(con)
+	// }
 	f, err := fsInfo.NewFs(ctx, configName, fsPath, config)
 	if f != nil && (err == nil || err == ErrorIsFile) {
 		addReverse(f, fsInfo)
 	}
 	return f, err
+}
+
+func fetch(param string, fetcher SpaceSepList) (string, error) {
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+		c      = exec.Command(fetcher[0], fetcher[1:]...)
+	)
+	c.Stdout = &stdout
+	c.Stderr = &stderr
+	var (
+		err          = c.Run()
+		stdoutString = strings.TrimSpace(stdout.String())
+		stderrString = strings.TrimSpace(stderr.String())
+	)
+	if err != nil {
+		if stderrString == "" {
+			stderrString = stdoutString
+		}
+		return "", fmt.Errorf("failed to get '%s' using %q: %s: %w", param, fetcher, stderrString, err)
+	}
+	return stdoutString, nil
 }
 
 // Add "global" config or "override" to ctx and the global config if required.
